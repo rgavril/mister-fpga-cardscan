@@ -90,7 +90,6 @@ def update_loaded_with(CORENAME, romPath):
 
 def wait_until_game_loaded():
 	""" Wait until mister sends a file selected event """
-	logging.info('Waiting for a file selected event.')
 
 	while True:
 		# We can't use the inotify in python so we fallback to the inotifywait
@@ -98,7 +97,6 @@ def wait_until_game_loaded():
 
 		# Check the contents of the file and exit when "selected" is found in the file
 		if file_content("/tmp/FILESELECT") == "selected":
-			logging.info('Detected a file selected event.')
 			return
 
 def main():
@@ -108,6 +106,7 @@ def main():
 	oldCURRENTPATH = file_content("/tmp/CURRENTPATH")
 
 	while True:
+		logging.info('Waiting for a file selected event.')
 		wait_until_game_loaded()
 
 		FULLPATH    = file_content("/tmp/FULLPATH")
@@ -115,29 +114,48 @@ def main():
 		STARTPATH   = file_content("/tmp/STARTPATH")
 		CORENAME    = file_content("/tmp/CORENAME")
 
+		if STARTPATH != oldSTARTPATH:
+			logging.info(f"Change in STARTPATH detected : {STARTPATH}")
+			loaded_file = STARTPATH
+		elif CURRENTPATH != oldCURRENTPATH:
+			logging.info(f"Change in CURRENTPATH detected : {CURRENTPATH}")
+			loaded_file = CURRENTPATH
+		else:
+			logging.debug("Change not detected, ignoring event.")
+			continue
+
 		logging.debug(f"/tmp/FULLPATH    : {FULLPATH}")
 		logging.debug(f"/tmp/CURRENTPATH : {CURRENTPATH}")
 		logging.debug(f"/tmp/STARTPATH   : {STARTPATH}")
 		logging.debug(f"/tmp/CORENAME    : {CORENAME}")
 
-		romPath = ""
-		if STARTPATH != oldSTARTPATH: # Loaded a new Core
-			logging.info(f"A core file was loaded ({STARTPATH})")
-			romPath = STARTPATH
-		elif CURRENTPATH != oldCURRENTPATH: # Loaded a new File
-			logging.info(f"A rom file was loded ({CURRENTPATH})")
-			romPath = find_file(f"{FULLPATH}/{CURRENTPATH}")
+		if not os.path.isfile(loaded_file):
+			logging.info(f"Tyring to locate '{loaded_file}' in '{FULLPATH}'")
+			found_file = find_file(FULLPATH+"/"+loaded_file)
+			if found_file:
+				logging.info(f"Located '{loaded_file}'' : {found_file}")
+				loaded_file = found_file
+			else:
+				logging.warning(f"Failed to locate '{loaded_file}'")
+				continue
 
-		if romPath and romPath.endswith('.mgl'):
-			romPath = rom_from_mgl(romPath)
+		if loaded_file.endswith('.mgl'):
+			logging.info("Detected MLG, trying to extract the rom loaded.")
+			found_file = rom_from_mgl(loaded_file)
+			if found_file:
+				logging.info(f"Detected {found_file} from mgl.")
+				loaded_file = found_file
+			else:
+				logging.warning(f"Failed to detect file from mlg.")
+				continue;
 
-		if romPath:
-			logging.debug(f"Will try to save : {romPath}")			
-			update_loaded_with(CORENAME, romPath)
+
+		if loaded_file:
+			logging.debug(f"Will try to save : {loaded_file}")			
+			update_loaded_with(CORENAME, loaded_file)
 		else:
 			logging.debug(f"Cannot resolve loaded game.")
 
-		logging.debug("-- END --")
 		oldCURRENTPATH = CURRENTPATH
 		oldSTARTPATH = STARTPATH
 
