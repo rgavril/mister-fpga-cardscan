@@ -88,6 +88,18 @@ def update_loaded_with(CORENAME, romPath):
 		with open(OUTPUT_FILE, "w") as f:
 			f.write(content)
 
+def wait_until_game_loaded():
+	""" Wait until mister sends a file selected event """
+	logging.info('Waiting for a file selected event.')
+
+	while True:
+		# We can't use the inotify in python so we fallback to the inotifywait
+		subprocess.run(("/usr/bin/inotifywait", "-e","MODIFY", "/tmp/FILESELECT"), capture_output=True)
+
+		# Check the contents of the file and exit when "selected" is found in the file
+		if file_content("/tmp/FILESELECT") == "selected":
+			logging.info('Detected a file selected event.')
+			return
 
 def main():
 	logging.info("Game watch process started")
@@ -95,12 +107,9 @@ def main():
 	oldSTARTPATH = file_content("/tmp/STARTPATH")
 	oldCURRENTPATH = file_content("/tmp/CURRENTPATH")
 
-	while 1:
-		subprocess.run(("/usr/bin/inotifywait", "-e","MODIFY", "/tmp/FILESELECT"), capture_output=True)
-		if file_content("/tmp/FILESELECT") != "selected":
-			continue
+	while True:
+		wait_until_game_loaded()
 
-		time.sleep(1)
 		FULLPATH = file_content("/tmp/FULLPATH")
 		CURRENTPATH = file_content("/tmp/CURRENTPATH")
 		STARTPATH = file_content("/tmp/STARTPATH")
