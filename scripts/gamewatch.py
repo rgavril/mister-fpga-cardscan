@@ -13,7 +13,13 @@ import subprocess
 import logging
 import time
 
+OUTPUT_FILE="/tmp/LOADED"
+
 def file_content(filename):
+	if not os.path.isfile(filename):
+		logging.warning(f"File does not exist : {filename}")
+		return ""
+
 	with open(filename) as f:
 		return f.readline()
 
@@ -78,8 +84,8 @@ def update_loaded_with(CORENAME, romPath):
 
 	logging.info(f"WRITING : {content}")
 
-	if content != file_content("/tmp/LOADED"):
-		with open("/tmp/LOADED", "w") as f:
+	if content != file_content(OUTPUT_FILE):
+		with open(OUTPUT_FILE, "w") as f:
 			f.write(content)
 
 
