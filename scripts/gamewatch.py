@@ -110,16 +110,15 @@ def main():
 	while True:
 		wait_until_game_loaded()
 
-		FULLPATH = file_content("/tmp/FULLPATH")
+		FULLPATH    = file_content("/tmp/FULLPATH")
 		CURRENTPATH = file_content("/tmp/CURRENTPATH")
-		STARTPATH = file_content("/tmp/STARTPATH")
-		CORENAME = file_content("/tmp/CORENAME")
+		STARTPATH   = file_content("/tmp/STARTPATH")
+		CORENAME    = file_content("/tmp/CORENAME")
 
-		logging.debug("-- START --")
-		logging.debug(f"FULLPATH = {FULLPATH}")
-		logging.debug(f"CURRENTPATH = {CURRENTPATH}")
-		logging.debug(f"STARTPATH = {STARTPATH}")
-		logging.debug(f"CORENAME = {CORENAME}")
+		logging.debug(f"/tmp/FULLPATH    : {FULLPATH}")
+		logging.debug(f"/tmp/CURRENTPATH : {CURRENTPATH}")
+		logging.debug(f"/tmp/STARTPATH   : {STARTPATH}")
+		logging.debug(f"/tmp/CORENAME    : {CORENAME}")
 
 		romPath = ""
 		if STARTPATH != oldSTARTPATH: # Loaded a new Core
