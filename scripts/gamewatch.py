@@ -1,7 +1,6 @@
 #!/usr/bin/python
 
 # TODO:
-#  - When game is loaded from MLG, use the core name from mlg
 #  - When core is loaded, don't save the version after underscore
 #  - When core is loaded and not matched, use names.txt to resolve
 
@@ -14,6 +13,32 @@ import logging
 import time
 
 OUTPUT_FILE="/tmp/LOADED"
+
+class MGLParser:
+	def __init__(self, filename):
+		self.root = ET.parse(filename)
+
+	def get_rom(self):
+		node_file = self.root.find('file')
+		
+		if node_file is None:
+			raise Exception("MLG is missing the <file> node.")
+			return
+
+		if 'path' not in node_file.attrib:
+			raise Exception("MLG is missing 'path' attribute for the <file> node.")
+			return
+
+		return node_file.get('path');
+
+	def get_core(self):
+		node_rbf = self.root.find('rbf')
+		
+		if node_rbf is None:
+			raise Exception("MLG is missing the <rbf> node.")
+			return
+
+		return node_rbf.text
 
 def file_content(filename):
 	if not os.path.isfile(filename):
@@ -43,7 +68,7 @@ def rom_from_mgl(mglFilePath):
 		return romFile
 
 	logging.warning("Parsing the mgl file failed!")
-	return 
+	return
 
 def find_file(match):
 	logging.debug(f"Started File Finding : {match}")
@@ -73,16 +98,10 @@ def find_file(match):
 	logging.warning(f"Match not found!")
 	return
 
-def update_loaded_with(CORENAME, romPath):
-	content = ""
-	if romPath.endswith(".rbf"):
-		content = f"Core|{romPath}"
-	elif romPath.endswith(".mra"):
-		content = f"Arcade|{romPath}"
-	else:
-		content = f"{CORENAME}|{romPath}"
-
-	logging.info(f"WRITING : {content}")
+def update_loaded_with(content):
+	logging.info(f"************************************")
+	logging.info(f"{content}")
+	logging.info(f"************************************")
 
 	if content != file_content(OUTPUT_FILE):
 		with open(OUTPUT_FILE, "w") as f:
@@ -140,21 +159,46 @@ def main():
 				continue
 
 		if loaded_file.endswith('.mgl'):
-			logging.info("Detected MLG, trying to extract the rom loaded.")
-			found_file = rom_from_mgl(loaded_file)
-			if found_file:
-				logging.info(f"Detected {found_file} from mgl.")
-				loaded_file = found_file
+			logging.info("A MLG was loaded, tyring to parse it.")
+			try:
+				mgl_parser = MGLParser(loaded_file)
+			except Exception as error:
+				loggin.warning(f"Cannot load MLG : {error}")
+				continue
+
+			try:
+				core = mgl_parser.get_core()
+			except Exception as error:
+				loggin.warning(f"Cannot extract core from MLG : {error}")
+				continue
+
+			try:
+				rom = mgl_parser.get_rom()
+			except Exception as warning:
+				logging.warning(f"Canot extract rom from MLG : {warning}")
+				rom = None
+
+			logging.debug(f"CORE: {core}")
+			logging.debug(f"ROM : {rom}")
+			
+			if rom is not None:
+				rom = find_file(rom)
+				core = os.path.basename(core) 
+				update_loaded_with(f"{core}|{rom}")
+
 			else:
-				logging.warning(f"Failed to detect file from mlg.")
-				continue;
+				core = find_file(core)
+				update_loaded_with(f"RBF|{core}")
+		
+		elif loaded_file.endswith('.rbf'):
+			update_loaded_with(f"RBF|{loaded_file}")
 
+		elif loaded_file.endswith('.mra'):
+			update_loaded_with(f"MRA|{loaded_file}")
 
-		if loaded_file:
-			logging.debug(f"Will try to save : {loaded_file}")			
-			update_loaded_with(CORENAME, loaded_file)
 		else:
-			logging.debug(f"Cannot resolve loaded game.")
+			update_loaded_with(f"{CORENAME}|{loaded_file}")
+
 
 		oldCURRENTPATH = CURRENTPATH
 		oldSTARTPATH = STARTPATH
