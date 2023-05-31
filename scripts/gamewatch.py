@@ -87,7 +87,7 @@ def find_matching_file(loaded_file, prefix=""):
 		return os.path.abspath(f"/media/fat/{prefix}/{loaded_file}")
 
 	# Check if the loaded file is within a zip, nothing to much we can do then
-	if ".zip/" in loaded_file:
+	if prefix.endswith(".zip"):
 		return os.path.abspath(f"/media/fat/{prefix}/{loaded_file}")
 
 	# Check if the loaded file is missing the file extension
@@ -115,8 +115,8 @@ def find_matching_file(loaded_file, prefix=""):
 def main():
 	logging.info("Game watch process started")
 	
-	oldSTARTPATH = read_file_contents("/tmp/STARTPATH")
-	oldCURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
+	old_STARTPATH = read_file_contents("/tmp/STARTPATH")
+	old_CURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
 
 	while True:
 		logging.info('Waiting for a file selected event.')
@@ -127,15 +127,18 @@ def main():
 		STARTPATH   = read_file_contents("/tmp/STARTPATH")
 		CORENAME    = read_file_contents("/tmp/CORENAME")
 
-		if STARTPATH != oldSTARTPATH:
+		if STARTPATH != old_STARTPATH:
 			logging.info(f"Change in STARTPATH detected : {STARTPATH}")
 			loaded_file = STARTPATH
-		elif CURRENTPATH != oldCURRENTPATH:
+		elif CURRENTPATH != old_CURRENTPATH:
 			logging.info(f"Change in CURRENTPATH detected : {CURRENTPATH}")
 			loaded_file = CURRENTPATH
 		else:
 			logging.debug("Change not detected, ignoring event.")
 			continue
+
+		old_CURRENTPATH = CURRENTPATH
+		old_STARTPATH = STARTPATH
 
 		logging.debug(f"/tmp/FULLPATH    : {FULLPATH}")
 		logging.debug(f"/tmp/CURRENTPATH : {CURRENTPATH}")
@@ -192,10 +195,7 @@ def main():
 		else:
 			update_loaded_with(f"{CORENAME}|{loaded_file}")
 
-		oldCURRENTPATH = CURRENTPATH
-		oldSTARTPATH = STARTPATH
-
-#logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S', filename="/var/log/gamewatch.log")
+# logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S', filename="/var/log/gamewatch.log")
 logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
 if __name__ == "__main__":
     main()
