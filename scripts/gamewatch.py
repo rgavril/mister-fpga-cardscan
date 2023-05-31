@@ -3,6 +3,7 @@
 # TODO:
 #  - When core is loaded, don't save the version after underscore
 #  - When core is loaded and not matched, use names.txt to resolve
+#  - When neogeo rom is loaed, look it up in the romsets.xml file
 
 import os
 import sys
@@ -85,6 +86,9 @@ def update_loaded_with(content):
 		with open(OUTPUT_FILE, "w") as f:
 			f.write(content)
 
+def translate_neogeo(altname):
+	return altname
+
 def wait_until_game_loaded():
 	""" Wait until mister sends a file selected event """
 
@@ -127,6 +131,9 @@ def main():
 		logging.debug(f"/tmp/CORENAME    : {CORENAME}")
 
 		if not os.path.isfile(loaded_file):
+			if "games/NEOGEO" in FULLPATH:
+				loaded_file = translate_neogeo(loaded_file)
+
 			logging.info(f"Tyring to locate '{loaded_file}' in '{FULLPATH}'")
 			found_file = find_file(FULLPATH+"/"+loaded_file)
 			if found_file:
@@ -176,7 +183,6 @@ def main():
 
 		else:
 			update_loaded_with(f"{CORENAME}|{loaded_file}")
-
 
 		oldCURRENTPATH = CURRENTPATH
 		oldSTARTPATH = STARTPATH
