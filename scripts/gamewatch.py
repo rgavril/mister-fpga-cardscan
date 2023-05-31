@@ -3,7 +3,6 @@
 # TODO:
 #  - When core is loaded, don't save the version after underscore
 #  - When core is loaded and not matched, use names.txt to resolve
-#  - When neogeo rom is loaed, look it up in the romsets.xml file
 
 import os
 import sys
@@ -77,6 +76,18 @@ def find_file(match):
 	logging.warning(f"Match not found!")
 	return
 
+def find_neogeo_romset_with_altname(altname):
+	try:
+		root = ET.parse("/media/fat/games/NeoGeo/romsets.xml")
+	except Exception as error:
+		logging.warning("Cannot find parse xml : /media/fat/games/NeoGeo/romsets.xml")
+		return
+	
+	for romset in root.findall('romset'):
+		if romset.get('altname') == altname:
+			return romset.get('name')
+	return
+
 def update_loaded_with(content):
 	logging.info(f"************************************")
 	logging.info(f"{content}")
@@ -85,9 +96,6 @@ def update_loaded_with(content):
 	if content != file_content(OUTPUT_FILE):
 		with open(OUTPUT_FILE, "w") as f:
 			f.write(content)
-
-def translate_neogeo(altname):
-	return altname
 
 def wait_until_game_loaded():
 	""" Wait until mister sends a file selected event """
@@ -131,8 +139,11 @@ def main():
 		logging.debug(f"/tmp/CORENAME    : {CORENAME}")
 
 		if not os.path.isfile(loaded_file):
+			
 			if "games/NEOGEO" in FULLPATH:
-				loaded_file = translate_neogeo(loaded_file)
+				neogeo_romset = find_neogeo_romset_with_altname(loaded_file)
+				if neogeo_romset is not None:
+					loaded_file = neogeo_romset
 
 			logging.info(f"Tyring to locate '{loaded_file}' in '{FULLPATH}'")
 			found_file = find_file(FULLPATH+"/"+loaded_file)
@@ -186,7 +197,6 @@ def main():
 
 		oldCURRENTPATH = CURRENTPATH
 		oldSTARTPATH = STARTPATH
-
 
 #logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S', filename="/var/log/gamewatch.log")
 logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
