@@ -40,41 +40,17 @@ class MGLParser:
 
 		return node_rbf.text
 
-def file_content(filename):
-	if not os.path.isfile(filename):
-		logging.warning(f"File does not exist : {filename}")
-		return ""
+def read_file_contents(file_path):
+	try:
+		with open(file_path) as f:
+			contents = f.read()
+		return contents
+	except FileNotFoundError:
+		logging.warning(f"File '{file_path}' not found.")
+	except IOError:
+		logging.warning(f"Error reading file '{file_path}'.")
+	return None
 
-	with open(filename) as f:
-		return f.readline()
-
-def find_file(match):
-	logging.debug(f"Started File Finding : {match}")
-	romPath = os.path.abspath(f"/media/fat/{match}")
-
-	if os.path.isfile(romPath):
-		logging.debug(f"Matched to : {romPath}")
-		return romPath
-
-	# If the file is within a zip
-	if ".zip/" in romPath:
-		logging.debug(f"Matched to : {romPath}")
-		return romPath
-
-	# Check if the file is missing an extension
-	romPathFull=glob.glob(glob.escape(romPath)+".*")
-	if romPathFull and os.path.isfile(romPathFull[0]):
-		logging.debug(f"Matched to : {romPathFull[0]}")
-		return romPathFull[0]
-
-	# Check if the file is a core with missing version info
-	romPathFull=glob.glob(glob.escape(romPath)+"_*.rbf")
-	if romPathFull and os.path.isfile(romPathFull[0]):
-		logging.debug(f"Matched to : {romPathFull[0]}")
-		return romPathFull[0]
-
-	logging.warning(f"Match not found!")
-	return
 
 def find_neogeo_romset_with_altname(altname):
 	try:
@@ -89,39 +65,67 @@ def find_neogeo_romset_with_altname(altname):
 	return
 
 def update_loaded_with(content):
-	logging.info(f"************************************")
-	logging.info(f"{content}")
-	logging.info(f"************************************")
-
-	if content != file_content(OUTPUT_FILE):
+	if content != read_file_contents(OUTPUT_FILE):
 		with open(OUTPUT_FILE, "w") as f:
 			f.write(content)
+	logging.info(f"************************************")
+	logging.info(f"{content}")
+	logging.info(f"************************************")	
 
 def wait_until_game_loaded():
-	""" Wait until mister sends a file selected event """
-
 	while True:
-		# We can't use the inotify in python so we fallback to the inotifywait
+		# Wait until mister modified /tmp/FILESELECTED
 		subprocess.run(("/usr/bin/inotifywait", "-e","MODIFY", "/tmp/FILESELECT"), capture_output=True)
-
-		# Check the contents of the file and exit when "selected" is found in the file
-		if file_content("/tmp/FILESELECT") == "selected":
+		
+		# Retur if was modified because of a file selected event
+		if read_file_contents("/tmp/FILESELECT") == "selected":
 			return
+
+def find_matching_file(loaded_file, prefix=""):
+	# Check if the loaded file is actually a file
+	if os.path.isfile(f"/media/fat/{prefix}/{loaded_file}"):
+		return os.path.abspath(f"/media/fat/{prefix}/{loaded_file}")
+
+	# Check if the loaded file is within a zip, nothing to much we can do then
+	if ".zip/" in loaded_file:
+		return os.path.abspath(f"/media/fat/{prefix}/{loaded_file}")
+
+	# Check if the loaded file is missing the file extension
+	matched_files = glob.glob(glob.escape(f"/media/fat/{prefix}/{loaded_file}")+".*")
+	if len(matched_files) >= 1:
+		return os.path.abspath(matched_files[0])
+
+	# Check if the loaded file is a rbd missing the versioning string
+	matched_files = glob.glob(glob.escape(f"/media/fat/{prefix}/{loaded_file}")+"_*.rbf")
+	if len(matched_files) >= 1:
+		return os.path.abspath(matched_files[0])
+
+	# Check if the loaded file is a neogeo altname
+	neogeo_romset = find_neogeo_romset_with_altname(loaded_file)
+	if neogeo_romset is not None:
+		if os.path.exists(f"/media/fat/{prefix}/{neogeo_romset}"):
+			return os.path.abspath(f"/media/fat/{prefix}/{neogeo_romset}")
+		if os.path.isfile(f"/media/fat/{prefix}/{neogeo_romset}.zip"):
+			return os.path.abspath(f"/media/fat/{prefix}/{neogeo_romset}.zip")
+
+	return None
+
+
 
 def main():
 	logging.info("Game watch process started")
 	
-	oldSTARTPATH = file_content("/tmp/STARTPATH")
-	oldCURRENTPATH = file_content("/tmp/CURRENTPATH")
+	oldSTARTPATH = read_file_contents("/tmp/STARTPATH")
+	oldCURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
 
 	while True:
 		logging.info('Waiting for a file selected event.')
 		wait_until_game_loaded()
 
-		FULLPATH    = file_content("/tmp/FULLPATH")
-		CURRENTPATH = file_content("/tmp/CURRENTPATH")
-		STARTPATH   = file_content("/tmp/STARTPATH")
-		CORENAME    = file_content("/tmp/CORENAME")
+		FULLPATH    = read_file_contents("/tmp/FULLPATH")
+		CURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
+		STARTPATH   = read_file_contents("/tmp/STARTPATH")
+		CORENAME    = read_file_contents("/tmp/CORENAME")
 
 		if STARTPATH != oldSTARTPATH:
 			logging.info(f"Change in STARTPATH detected : {STARTPATH}")
@@ -139,33 +143,26 @@ def main():
 		logging.debug(f"/tmp/CORENAME    : {CORENAME}")
 
 		if not os.path.isfile(loaded_file):
-			
-			if "games/NEOGEO" in FULLPATH:
-				neogeo_romset = find_neogeo_romset_with_altname(loaded_file)
-				if neogeo_romset is not None:
-					loaded_file = neogeo_romset
+			matching_file = find_matching_file(loaded_file, FULLPATH)
+			if matching_file is None :
+				logging.warning(f"Failed to find a file matching {loaded_file}")
+				continue;
+			loaded_file = matching_file
 
-			logging.info(f"Tyring to locate '{loaded_file}' in '{FULLPATH}'")
-			found_file = find_file(FULLPATH+"/"+loaded_file)
-			if found_file:
-				logging.info(f"Located '{loaded_file}'' : {found_file}")
-				loaded_file = found_file
-			else:
-				logging.warning(f"Failed to locate '{loaded_file}'")
-				continue
+		logging.debug(f"Loaded file is {loaded_file}")
 
 		if loaded_file.endswith('.mgl'):
 			logging.info("A MLG was loaded, tyring to parse it.")
 			try:
 				mgl_parser = MGLParser(loaded_file)
 			except Exception as error:
-				loggin.warning(f"Cannot load MLG : {error}")
+				logging.warning(f"Cannot load MLG : {error}")
 				continue
 
 			try:
 				core = mgl_parser.get_core()
 			except Exception as error:
-				loggin.warning(f"Cannot extract core from MLG : {error}")
+				logging.warning(f"Cannot extract core from MLG : {error}")
 				continue
 
 			try:
@@ -178,12 +175,12 @@ def main():
 			logging.debug(f"ROM : {rom}")
 			
 			if rom is not None:
-				rom = find_file(rom)
+				rom = find_matching_file(rom)
 				core = os.path.basename(core) 
 				update_loaded_with(f"{core}|{rom}")
 
 			else:
-				core = find_file(core)
+				core = find_matching_file(core)
 				update_loaded_with(f"RBF|{core}")
 		
 		elif loaded_file.endswith('.rbf'):
