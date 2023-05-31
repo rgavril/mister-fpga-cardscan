@@ -48,28 +48,6 @@ def file_content(filename):
 	with open(filename) as f:
 		return f.readline()
 
-def rom_from_mgl(mglFilePath):
-	logging.debug("Started MGL Parsing")
-
-	root = ET.parse(mglFilePath)
-	rbfNode = root.find('rbf')
-	fileNode = root.find('file')
-
-	if fileNode is not None and 'path' in fileNode.attrib:
-		logging.debug("Parsing from file node : " + fileNode.get('path'))
-		romFile = find_file("/" + fileNode.get('path'))
-		logging.debug(f"Parsing from file completed : {romFile}")
-		return romFile
-
-	elif rbfNode is not None:
-		logging.debug(f"Parsing from rbf node : {rbfNode.text}")
-		romFile = find_file(rbfNode.text)
-		logging.debug(f"Parsing from rbf completed : {romFile}")
-		return romFile
-
-	logging.warning("Parsing the mgl file failed!")
-	return
-
 def find_file(match):
 	logging.debug(f"Started File Finding : {match}")
 	romPath = os.path.abspath(f"/media/fat/{match}")
