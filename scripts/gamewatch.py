@@ -2,7 +2,6 @@
 
 # TODO:
 #  - When core is loaded, don't save the version after underscore
-#  - When core is loaded and not matched, use names.txt to resolve
 
 import os
 import sys
@@ -64,6 +63,28 @@ def find_neogeo_romset_with_altname(altname):
 			return romset.get('name')
 	return
 
+def find_rbf_with_alias(alias):
+	try:
+		file = open("/media/fat/names.txt")
+	except FileNotFoundError as error:
+		logging.debug("File '/media/fat/names.txt' not found.")
+		return None
+	except IOError as error:
+		logging.debug("Error reading file '/media/fat/names.txt'.")
+		return None
+
+	for line in file:
+		if not ":" in line:
+			continue		
+		index = line.index(':')
+		core_name  = line[:index].strip()
+		core_alias = line[index+1:].strip()
+		if core_alias == alias:
+			return core_name
+
+	return None
+
+
 def update_loaded_with(content):
 	if content != read_file_contents(OUTPUT_FILE):
 		with open(OUTPUT_FILE, "w") as f:
@@ -107,6 +128,13 @@ def find_matching_file(loaded_file, prefix=""):
 			return os.path.abspath(f"/media/fat/{prefix}/{neogeo_romset}")
 		if os.path.isfile(f"/media/fat/{prefix}/{neogeo_romset}.zip"):
 			return os.path.abspath(f"/media/fat/{prefix}/{neogeo_romset}.zip")
+
+	# Check if the loaded file is a names.txt alias of a core
+	rbf = find_rbf_with_alias(loaded_file)
+	if rbf is not None:
+		matched_files = glob.glob(glob.escape(f"/media/fat/{prefix}/{rbf}")+"_*.rbf")
+		if len(matched_files) >= 1:
+			return os.path.abspath(matched_files[0])
 
 	return None
 
