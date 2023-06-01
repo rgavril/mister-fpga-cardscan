@@ -7,7 +7,13 @@ import time
 import configparser
 import logging
 
+MGL_TEMP_FILE = "/tmp/cardscan.mgl"
 CONFIG_FILE = "/media/fat/cardscan.ini"
+LOADED_FILE = "/tmp/LOADED"
+DEFAULT_SERIAL_PORT = "/dev/ttyUSB0"
+DEFAULT_SERIAL_SPEED = "9600"
+#logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S', filename="/var/log/cardscan.log")
+logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
 
 def read_config():
 	config = configparser.ConfigParser()
@@ -25,10 +31,10 @@ def setup_config_file():
 		config.add_section('SERIAL')
 
 	if not config.has_option('SERIAL', 'port'):
-		config.set('SERIAL', 'port', '/dev/ttyUSB0')
+		config.set('SERIAL', 'port', DEFAULT_SERIAL_PORT)
 
 	if not config.has_option('SERIAL', 'speed'):
-		config.set('SERIAL', 'speed', '9600')
+		config.set('SERIAL', 'speed', DEFAULT_SERIAL_SPEED)
 
 	if not config.has_section('CARDS'):
 		config.add_section('CARDS')
@@ -61,6 +67,40 @@ def send_mister_cmd(cmd):
 	with open("/dev/MiSTer_cmd", "w") as cmdFile:
 		cmdFile.write(cmd)
 
+def read_active_game():
+	try:
+		f = open(LOADED_FILE)
+		contents = f.read()
+		return contents
+	except FileNotFoundError:
+		logging.warning(f"Error reading {LOADED_FILE}")
+		return None
+
+def make_mgl(rbf, delay, type, index, path):
+	mgl = '<mistergamedescription>\n\t<rbf>{}</rbf>\n\t<file delay="{}" type="{}" index="{}" path="{}"/>\n</mistergamedescription>'
+
+	file = open(MGL_TEMP_FILE, "w")
+	file.write(mgl.format(rbf, delay, type, index, path))
+	file.close()
+	return 
+
+def load_game(game):
+	if not "|" in game :
+		logging.warning(f"Invalid format for game : {game}")
+		return 
+
+	index = game.index("|")
+	filetype = game[:index].strip()
+	filename = game[index+1:].strip()
+
+	if filetype == "RBF" or filetype == "MRA" or filetype == "MGL":
+		send_mister_cmd(f'load_core {filename}')
+	elif filetype == "NES":
+		make_mgl("_Console/NES", 1, "f", 0, "../../../.."+filename)
+		send_mister_cmd(f'load_core {MGL_TEMP_FILE}')
+	else:
+		logging.warning(f"Invalid file type detected : {filetype}")
+
 ##
 ## Continously reads the serial port and performs actions based
 ## on the id that is received by it.
@@ -70,11 +110,7 @@ def serial_main_loop():
 	config = read_config()
 	serial = setup_serial_port()
 	
-	activeID = ""
-	activeGame = "";
-
 	for line in countinous_readline(serial):
-
 		# Skip all lines that don't start with a '['
 		if not line.startswith('['):
 			continue;
@@ -102,16 +138,13 @@ def serial_main_loop():
 			logging.info(f'Card #{cardID} is associated to "{cardGame}".')
 
 		# Skip realoadin if the game / card did not change
-		if activeID == cardID and activeGame == cardGame :
+		activeGame = read_active_game()
+		if activeGame == cardGame:
 			logging.info(f'Game "{cardGame}" already running.')
 			continue
 
-		# Save current loaded card
-		activeGame = cardGame
-		activeID = cardID
-
 		# Tell MiSTer to load the associated game
-		send_mister_cmd(f'load_core {cardGame}')
+		load_game(cardGame)
 
 def display_help():
 	print(f"Usage : {sys.argv[0]} [OPTIONS]")
@@ -142,6 +175,5 @@ def main():
 	setup_config_file()
 	serial_main_loop()
 
-logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S', filename="/var/log/cardscan.log")
 if __name__ == "__main__":
     main()
