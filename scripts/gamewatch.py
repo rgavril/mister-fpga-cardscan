@@ -2,6 +2,7 @@
 
 # TODO:
 #  - When core is loaded, don't save the version after underscore
+#  - Lookup mlg aliases in names.txt, aparenty they also match agains that
 
 import os
 import sys
@@ -13,31 +14,46 @@ import time
 
 OUTPUT_FILE="/tmp/LOADED"
 
-class MGLParser:
-	def __init__(self, filename):
-		self.root = ET.parse(filename)
+def get_rbf_from_mgl(mgl_filename):
+	# Try to load MGL file for parsing
+	try:
+		root = ET.parse(mgl_filename)
+	except Exception as error:
+		logging.error(f"Error parsing MLG : {error}")
+		return None
 
-	def get_rom(self):
-		node_file = self.root.find('file')
-		
-		if node_file is None:
-			raise Exception("MLG is missing the <file> node.")
-			return
+	# Find the <rbf /> node in the mgl
+	node_rbf = root.find('rbf')
+	if node_rbf is None:
+		logging.warning(f"MLG is missing the <rbf> entry.")
+		return None
 
-		if 'path' not in node_file.attrib:
-			raise Exception("MLG is missing 'path' attribute for the <file> node.")
-			return
+	# Return whatever is written inside the <rbf /> node
+	return node_rbf.text
 
-		return node_file.get('path');
+def get_file_path_from_mgl(mgl_filename):
+	# Try to load MGL file for parsing
+	try:
+		root = ET.parse(mgl_filename)
+	except Exception as error:
+		logging.error(f"Error parsing MLG : {error}")
+		return None
 
-	def get_core(self):
-		node_rbf = self.root.find('rbf')
-		
-		if node_rbf is None:
-			raise Exception("MLG is missing the <rbf> node.")
-			return
+	# Find the <file /> node in the mgl
+	file = root.find('file')
+	if file is None:
+		# Sometimes the <file /> node is missing, which is normal as there
+		# are mgl files that only load cores.
+		logging.warning(f"MLG is missing the <file /> entry.")
+		return None
 
-		return node_rbf.text
+	# The path attribute shuld not be missing from the <file /> node afaik
+	if 'path' not in file.attrib:
+		logging.error("MLG is missing the 'path' attribute for the <file /> node.")
+		return None
+
+	# Return the path attrinute of the file node
+	return file.get('path');
 
 def read_file_contents(file_path):
 	try:
@@ -178,22 +194,16 @@ def find_matching_file(loaded_file, prefix=""):
 
 def main():
 	logging.info("Game watch process started")
-	
-	# # Save current value ot STARTPATH and CURRENTPATH so we can
-	# # test which one has changed, later when a game/core is loaded.
-	# # At least one of them changes and will give us a hint on what was loaded.
-	# old_STARTPATH = read_file_contents("/tmp/STARTPATH")
-	# old_CURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
 
 	while True:
 		# Wait until mister changes the contents of /tmp/FILESELECT to "selected"
-		logging.info("Waiting for a file selected event.")
+		logging.info("Waiting for MiSTer to write 'selected' in /tmp/FILESELECT.")
 		wait_mister_file_selection();
 
 		# Wait for selected file
 		selected_file = get_mister_file_selection()
+		logging.info(f"Reported as loaded : {selected_file}")
 		if selected_file is None:
-			logging.info("Selection is not valid, false event.")
 			continue;
 
 		# Read what mister wrote in the information files
@@ -201,7 +211,6 @@ def main():
 		CURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
 		STARTPATH   = read_file_contents("/tmp/STARTPATH")
 		CORENAME    = read_file_contents("/tmp/CORENAME")
-
 		# Debugging to see what was the content of the files
 		logging.debug(f"/tmp/FULLPATH    : {FULLPATH}")
 		logging.debug(f"/tmp/CURRENTPATH : {CURRENTPATH}")
@@ -210,41 +219,20 @@ def main():
 
 		# Try to backtrace the mister selection to an actual file
 		loaded_file = find_matching_file(selected_file, FULLPATH)
+		logging.info(f"Matched to file : {loaded_file}")
 
 		# If we could not match it to a file, stop doing anyting
 		if loaded_file is None :
-			logging.warning(f"Failed to find a file matching {selected_file}")
+			logging.warning(f"Failed to find a file matching {selected_file} in {FULLPATH}")
 			continue;
-
-		# Debuging to see what file we detected
-		logging.debug(f"Loaded file is {loaded_file}")
 
 		# If the loaded file is actually a MGL we need to see what was actually loaded
 		# by looking within the file.
 		if loaded_file.endswith('.mgl'):
 			logging.info("A MLG was loaded, tyring to parse it.")
-			try:
-				mgl_parser = MGLParser(loaded_file)
-			# If we cannot open MGL, there is nothing else to do
-			except Exception as error:
-				logging.warning(f"Cannot load MLG : {error}")
-				continue
-
 			# Tyring ro read the core loeaded trough the MGL 
-			try:
-				core = mgl_parser.get_core()
-			# A MGL without a core (rbf) is impossible afaik, so we're out
-			except Exception as error:
-				logging.warning(f"Cannot extract core from MGL : {error}")
-				continue
-
-			# Trying to read the rom loaded trought the MGL
-			try:
-				rom = mgl_parser.get_rom()
-			# Is possible to not read a rom if the MGL is loading only the rbf
-			except Exception as warning:
-				logging.info(f"Canot extract rom from MGL : {warning}")
-				rom = None
+			core = get_rbf_from_mgl(loaded_file)
+			rom  = get_file_path_from_mgl(loaded_file)
 
 			# Do some debugging to figure out what we got
 			logging.debug(f"CORE: {core}")
@@ -256,7 +244,7 @@ def main():
 				core = os.path.basename(core) 
 				update_loaded_with(f"{core}|{rom}")
 			# If a rom was not loaded, we probably need to load the core
-			else:
+			elif core is not None:
 				core = find_matching_file(core)
 				update_loaded_with(f"RBF|{core}")
 		
