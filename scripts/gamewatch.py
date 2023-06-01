@@ -13,6 +13,9 @@ import logging
 import time
 
 OUTPUT_FILE="/tmp/LOADED"
+# logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S', filename="/var/log/gamewatch.log")
+logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
+
 
 def get_rbf_from_mgl(mgl_filename):
 	# Try to load MGL file for parsing
@@ -30,6 +33,7 @@ def get_rbf_from_mgl(mgl_filename):
 
 	# Return whatever is written inside the <rbf /> node
 	return node_rbf.text
+
 
 def get_file_path_from_mgl(mgl_filename):
 	# Try to load MGL file for parsing
@@ -55,6 +59,7 @@ def get_file_path_from_mgl(mgl_filename):
 	# Return the path attrinute of the file node
 	return file.get('path');
 
+
 def read_file_contents(file_path):
 	try:
 		with open(file_path) as f:
@@ -65,6 +70,7 @@ def read_file_contents(file_path):
 	except IOError:
 		logging.warning(f"Error reading file '{file_path}'.")
 	return None
+
 
 
 def find_neogeo_romset_with_altname(altname):
@@ -78,6 +84,7 @@ def find_neogeo_romset_with_altname(altname):
 		if romset.get('altname') == altname:
 			return romset.get('name')
 	return
+
 
 def find_rbf_with_alias(alias):
 	try:
@@ -100,6 +107,7 @@ def find_rbf_with_alias(alias):
 
 	return None
 
+
 def update_loaded_with(content):
 	if content != read_file_contents(OUTPUT_FILE):
 		with open(OUTPUT_FILE, "w") as f:
@@ -118,7 +126,14 @@ def wait_mister_file_selection():
 
 		# Return only on a file selected event
 		if read_file_contents("/tmp/FILESELECT") == "selected":
-			return
+			break
+
+	# Debugging to see what was the content of the files
+	logging.debug(f"/tmp/FULLPATH    : " + read_file_contents("/tmp/FULLPATH"))
+	logging.debug(f"/tmp/CURRENTPATH : " + read_file_contents("/tmp/CURRENTPATH"))
+	logging.debug(f"/tmp/STARTPATH   : " + read_file_contents("/tmp/STARTPATH"))
+	logging.debug(f"/tmp/CORENAME    : " + read_file_contents("/tmp/CORENAME"))
+
 
 def get_mister_file_selection():
 	# Read the current values of misters's CURRENTPATH and STARTPATH
@@ -192,6 +207,7 @@ def find_matching_file(loaded_file, prefix=""):
 	return None
 
 
+
 def main():
 	logging.info("Game watch process started")
 
@@ -200,47 +216,35 @@ def main():
 		logging.info("Waiting for MiSTer to write 'selected' in /tmp/FILESELECT.")
 		wait_mister_file_selection();
 
-		# Wait for selected file
+		# Check if mister also reported a change in the seleted/loaded file
 		selected_file = get_mister_file_selection()
 		logging.info(f"Reported as loaded : {selected_file}")
 		if selected_file is None:
 			continue;
 
-		# Read what mister wrote in the information files
-		FULLPATH    = read_file_contents("/tmp/FULLPATH")
-		CURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
-		STARTPATH   = read_file_contents("/tmp/STARTPATH")
-		CORENAME    = read_file_contents("/tmp/CORENAME")
-		# Debugging to see what was the content of the files
-		logging.debug(f"/tmp/FULLPATH    : {FULLPATH}")
-		logging.debug(f"/tmp/CURRENTPATH : {CURRENTPATH}")
-		logging.debug(f"/tmp/STARTPATH   : {STARTPATH}")
-		logging.debug(f"/tmp/CORENAME    : {CORENAME}")
-
 		# Try to backtrace the mister selection to an actual file
-		loaded_file = find_matching_file(selected_file, FULLPATH)
+		fullpath = read_file_contents("/tmp/FULLPATH")
+		loaded_file = find_matching_file(selected_file, fullpath)
 		logging.info(f"Matched to file : {loaded_file}")
 
 		# If we could not match it to a file, stop doing anyting
 		if loaded_file is None :
-			logging.warning(f"Failed to find a file matching {selected_file} in {FULLPATH}")
+			logging.warning(f"Failed to find a file matching {selected_file} in {fullpath}")
 			continue;
 
 		# If the loaded file is actually a MGL we need to see what was actually loaded
 		# by looking within the file.
 		if loaded_file.endswith('.mgl'):
-			logging.info("A MLG was loaded, tyring to parse it.")
 			# Tyring ro read the core loeaded trough the MGL 
 			core = get_rbf_from_mgl(loaded_file)
 			rom  = get_file_path_from_mgl(loaded_file)
 
-			# Do some debugging to figure out what we got
-			logging.debug(f"CORE: {core}")
-			logging.debug(f"ROM : {rom}")
+			logging.info(f"MGL is running the rbf : {core}")
+			logging.info(f"MLG is loading the rom : {rom}")
 			
 			# If a rom was loaded, create a entry for it
 			if rom is not None:
-				rom = find_matching_file(rom)
+				rom  = os.path.abspath(f"/media/fat/{rom}")
 				core = os.path.basename(core) 
 				update_loaded_with(f"{core}|{rom}")
 			# If a rom was not loaded, we probably need to load the core
@@ -258,9 +262,8 @@ def main():
 
 		# If is not a MRA, RBF or MGL than it must be a ROM
 		else:
-			update_loaded_with(f"{CORENAME}|{loaded_file}")
+			core = read_file_contents("/tmp/CORENAME")
+			update_loaded_with(f"{core}|{loaded_file}")
 
-# logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S', filename="/var/log/gamewatch.log")
-logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
 if __name__ == "__main__":
     main()
