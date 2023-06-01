@@ -129,10 +129,19 @@ def load_game(game):
 		create_temp_mlg(core)
 		load_temp_mgl()
 
-	# Id it's a nes game
+	# NES Game
 	elif filetype == "NES":
-		# Create and run the mgl to load the NES rom
 		create_temp_mlg("_Console/NES", 1, "f", 0, "../../../.."+filename)
+		load_temp_mgl()
+
+	# NeoGeo Game
+	elif filetype == "NEOGEO":
+		create_temp_mlg("_Console/NeoGeo", 1, "f", 1, "../../../.."+filename)
+		load_temp_mgl()
+
+	# Super Nintendo Game
+	elif filetype == "SNES":
+		create_temp_mlg("_Console/NeoGeo", 2, "f", 0, "../../../.."+filename)
 		load_temp_mgl()
 
 	# We got this far without a mach, something must be wrong
