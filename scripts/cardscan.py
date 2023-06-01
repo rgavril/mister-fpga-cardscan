@@ -7,7 +7,7 @@ import time
 import configparser
 import logging
 
-MGL_TEMP_FILE = "/tmp/cardscan.mgl"
+MGL_TEMP_FILE = "/media/fat/Card Reader.mgl"
 CONFIG_FILE = "/media/fat/cardscan.ini"
 LOADED_FILE = "/tmp/LOADED"
 DEFAULT_SERIAL_PORT = "/dev/ttyUSB0"
@@ -76,28 +76,66 @@ def read_active_game():
 		logging.warning(f"Error reading {LOADED_FILE}")
 		return None
 
-def make_mgl(rbf, delay, type, index, path):
-	mgl = '<mistergamedescription>\n\t<rbf>{}</rbf>\n\t<file delay="{}" type="{}" index="{}" path="{}"/>\n</mistergamedescription>'
+def create_temp_mlg(rbf, delay=1, type="f", index=0, path=None):
+	file = open(f"{MGL_TEMP_FILE}", "w")
+	if path is not None:
+		mgl = '<mistergamedescription>\n\t<rbf>{}</rbf>\n\t<file delay="{}" type="{}" index="{}" path="{}"/>\n</mistergamedescription>\n'
+		file.write(mgl.format(rbf, delay, type, index, path))
+	else:
+		mgl = '<mistergamedescription>\n\t<rbf>{}</rbf>\n</mistergamedescription>\n'
+		file.write(mgl.format(rbf))
 
-	file = open(MGL_TEMP_FILE, "w")
-	file.write(mgl.format(rbf, delay, type, index, path))
 	file.close()
 	return 
 
+def delete_temp_mgl():
+	try:
+		os.remove(f"{MGL_TEMP_FILE}")
+	except OSError:
+		pass
+
+def load_temp_mgl():
+	send_mister_cmd(f'load_core {MGL_TEMP_FILE}')
+
+
 def load_game(game):
+	# Make sure we start from scratch and don't let a hanging mgl on disk
+	delete_temp_mgl()
+
+	# Check if the entry has the proper file format <FILETYPE>|<FILENAME>
 	if not "|" in game :
 		logging.warning(f"Invalid format for game : {game}")
 		return 
 
+	# Extract the filename and filetype from the game
 	index = game.index("|")
 	filetype = game[:index].strip()
 	filename = game[index+1:].strip()
 
-	if filetype == "RBF" or filetype == "MRA" or filetype == "MGL":
+	# If the file is an arcade core
+	if filetype == "MRA":
+		# We load it directly, we can't use mgl files for that
 		send_mister_cmd(f'load_core {filename}')
+
+	# If the file is a plain core
+	elif filetype == "RBF":
+		# Make core name relative to /media/fat
+		core = filename.replace("/media/fat/", "") 
+		
+		# Remove versioning and extension
+		core = core.rsplit("_", 1)[0]
+		
+		# Create and run the mgl to load the core
+		create_temp_mlg(core)
+		load_temp_mgl()
+
+	# Id it's a nes game
 	elif filetype == "NES":
-		make_mgl("_Console/NES", 1, "f", 0, "../../../.."+filename)
-		send_mister_cmd(f'load_core {MGL_TEMP_FILE}')
+		# Create and run the mgl to load the NES rom
+		create_temp_mlg("_Console/NES", 1, "f", 0, "../../../.."+filename)
+		load_temp_mgl()
+
+	# We got this far without a mach, something must be wrong
 	else:
 		logging.warning(f"Invalid file type detected : {filetype}")
 

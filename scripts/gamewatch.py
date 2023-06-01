@@ -151,6 +151,11 @@ def get_mister_file_selection():
 	elif get_mister_file_selection.currentpath_old != currentpath:	
 		selection = currentpath
 
+	# Sometimes a mgl name doesn't change but it's contents does so
+	# is better to not ignore it
+	elif startpath.endswith('mgl'):
+		return startpath
+
 	# If none of the files changed, we can't figure out what was selected.
 	# Is very common for mister to send selected events without something 
 	# actualy changing.
