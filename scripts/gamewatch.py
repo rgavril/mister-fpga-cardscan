@@ -84,7 +84,6 @@ def find_rbf_with_alias(alias):
 
 	return None
 
-
 def update_loaded_with(content):
 	if content != read_file_contents(OUTPUT_FILE):
 		with open(OUTPUT_FILE, "w") as f:
@@ -93,16 +92,54 @@ def update_loaded_with(content):
 	logging.info(f"{content}")
 	logging.info(f"************************************")	
 
-def wait_until_game_loaded():
+
+def wait_mister_file_selection():
 	while True:
-		# Wait until mister modified /tmp/FILESELECTED
+		# Wait until mister modifies /tmp/FILESELECTED
+		# NOTE: Need to use external inotifywait as the 
+		#       python library is missing on mister.
 		subprocess.run(("/usr/bin/inotifywait", "-e","MODIFY", "/tmp/FILESELECT"), capture_output=True)
-		
-		# Retur if was modified because of a file selected event
+
+		# Return only on a file selected event
 		if read_file_contents("/tmp/FILESELECT") == "selected":
 			return
 
+def get_mister_file_selection():
+	# Read the current values of misters's CURRENTPATH and STARTPATH
+	# files as one of them hold the current selection.
+	currentpath = read_file_contents("/tmp/CURRENTPATH")
+	startpath   = read_file_contents("/tmp/STARTPATH")
+
+	# First checking if STARTPATH content changed. 
+	# It usually changes when a core, mlg or mra was loaded.
+	if get_mister_file_selection.startpath_old != startpath:
+		selection = startpath
+
+	# Second check if CURRENTPATH content changed.
+	# It usually changes when a rom was loaded.
+	elif get_mister_file_selection.currentpath_old != currentpath:	
+		selection = currentpath
+
+	# If none of the files changed, we can't figure out what was selected.
+	# Is very common for mister to send selected events without something 
+	# actualy changing.
+	else:
+		selection = None
+	
+	# Save the current values so we can compare against them the next time
+	get_mister_file_selection.startpath_old = startpath
+	get_mister_file_selection.currentpath_old = currentpath
+
+	return selection
+get_mister_file_selection.startpath_old = ""
+get_mister_file_selection.currentpath_old = ""
+
+
 def find_matching_file(loaded_file, prefix=""):
+	# Check if the loaded fine is actually a file
+	if os.path.isfile(loaded_file):
+		return os.path.abspath(loaded_file)
+
 	# Check if the loaded file is actually a file
 	if os.path.isfile(f"/media/fat/{prefix}/{loaded_file}"):
 		return os.path.abspath(f"/media/fat/{prefix}/{loaded_file}")
@@ -139,38 +176,31 @@ def find_matching_file(loaded_file, prefix=""):
 	return None
 
 
-
 def main():
 	logging.info("Game watch process started")
 	
-	old_STARTPATH = read_file_contents("/tmp/STARTPATH")
-	old_CURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
+	# # Save current value ot STARTPATH and CURRENTPATH so we can
+	# # test which one has changed, later when a game/core is loaded.
+	# # At least one of them changes and will give us a hint on what was loaded.
+	# old_STARTPATH = read_file_contents("/tmp/STARTPATH")
+	# old_CURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
 
 	while True:
 		# Wait until mister changes the contents of /tmp/FILESELECT to "selected"
-		logging.info('Waiting for a file selected event.')
-		wait_until_game_loaded()
+		logging.info("Waiting for a file selected event.")
+		wait_mister_file_selection();
+
+		# Wait for selected file
+		selected_file = get_mister_file_selection()
+		if selected_file is None:
+			logging.info("Selection is not valid, false event.")
+			continue;
 
 		# Read what mister wrote in the information files
 		FULLPATH    = read_file_contents("/tmp/FULLPATH")
 		CURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
 		STARTPATH   = read_file_contents("/tmp/STARTPATH")
 		CORENAME    = read_file_contents("/tmp/CORENAME")
-		
-		# Usually STARTPATH changes when the core or mgl was loaded
-		if STARTPATH != old_STARTPATH:
-			logging.info(f"Change in STARTPATH detected : {STARTPATH}")
-			old_STARTPATH = STARTPATH
-			loaded_file = STARTPATH
-		# Usually CURRENTPATH changes when a rom was loaded
-		elif CURRENTPATH != old_CURRENTPATH:
-			logging.info(f"Change in CURRENTPATH detected : {CURRENTPATH}")
-			old_CURRENTPATH = CURRENTPATH
-			loaded_file = CURRENTPATH
-		# We sometimes receive a event without anything changing, we should ignore it.
-		else:
-			logging.debug("Change not detected, ignoring event.")
-			continue
 
 		# Debugging to see what was the content of the files
 		logging.debug(f"/tmp/FULLPATH    : {FULLPATH}")
@@ -178,15 +208,13 @@ def main():
 		logging.debug(f"/tmp/STARTPATH   : {STARTPATH}")
 		logging.debug(f"/tmp/CORENAME    : {CORENAME}")
 
-		# If the selected option is not actually a file, try to match it to one
-		if not os.path.isfile(loaded_file):
-			matching_file = find_matching_file(loaded_file, FULLPATH)
+		# Try to backtrace the mister selection to an actual file
+		loaded_file = find_matching_file(selected_file, FULLPATH)
 
-			# If we could not match it to a file, stop doing anyting
-			if matching_file is None :
-				logging.warning(f"Failed to find a file matching {loaded_file}")
-				continue;
-			loaded_file = matching_file
+		# If we could not match it to a file, stop doing anyting
+		if loaded_file is None :
+			logging.warning(f"Failed to find a file matching {selected_file}")
+			continue;
 
 		# Debuging to see what file we detected
 		logging.debug(f"Loaded file is {loaded_file}")
