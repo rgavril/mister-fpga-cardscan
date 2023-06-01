@@ -67,7 +67,7 @@ def send_mister_cmd(cmd):
 	with open("/dev/MiSTer_cmd", "w") as cmdFile:
 		cmdFile.write(cmd)
 
-def read_active_game():
+def currently_loaded_game():
 	try:
 		f = open(LOADED_FILE)
 		contents = f.read()
@@ -96,6 +96,15 @@ def delete_temp_mgl():
 
 def load_temp_mgl():
 	send_mister_cmd(f'load_core {MGL_TEMP_FILE}')
+
+def save_game(cardID):
+	config = read_config()
+
+	if not config.has_section('CARDS'):
+		config.add_section('CARDS')
+
+	config.set('CARDS', cardID, currently_loaded_game())
+	save_config(config)
 
 
 def load_game(game):
@@ -156,6 +165,7 @@ def serial_main_loop():
 	logging.info(f"Serial port process started.")
 	config = read_config()
 	serial = setup_serial_port()
+	write_mode_on = False
 	
 	for line in countinous_readline(serial):
 		# Skip all lines that don't start with a '['
@@ -168,6 +178,19 @@ def serial_main_loop():
 
 		# Re-read the config file
 		config = read_config()
+
+		## Save if master card was used, set write mode on
+		if cardID == "3696165944":
+			logging.info(f'Master card was used, write mode is ON')
+			write_mode_on = True
+			continue;
+
+		if write_mode_on:
+			logging.info(f"Game written on card {cardID}")
+			write_mode_on = False
+			save_game(cardID)
+			continue;
+
 
 		# If the card was not game associated, write a empty value
 		if not config.has_option('CARDS', cardID) :
@@ -185,7 +208,7 @@ def serial_main_loop():
 			logging.info(f'Card #{cardID} is associated to "{cardGame}".')
 
 		# Skip realoadin if the game / card did not change
-		activeGame = read_active_game()
+		activeGame = currently_loaded_game()
 		if activeGame == cardGame:
 			logging.info(f'Game "{cardGame}" already running.')
 			continue
