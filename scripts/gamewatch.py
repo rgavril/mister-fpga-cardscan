@@ -147,79 +147,100 @@ def main():
 	old_CURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
 
 	while True:
+		# Wait until mister changes the contents of /tmp/FILESELECT to "selected"
 		logging.info('Waiting for a file selected event.')
 		wait_until_game_loaded()
 
+		# Read what mister wrote in the information files
 		FULLPATH    = read_file_contents("/tmp/FULLPATH")
 		CURRENTPATH = read_file_contents("/tmp/CURRENTPATH")
 		STARTPATH   = read_file_contents("/tmp/STARTPATH")
 		CORENAME    = read_file_contents("/tmp/CORENAME")
-
+		
+		# Usually STARTPATH changes when the core or mgl was loaded
 		if STARTPATH != old_STARTPATH:
 			logging.info(f"Change in STARTPATH detected : {STARTPATH}")
+			old_STARTPATH = STARTPATH
 			loaded_file = STARTPATH
+		# Usually CURRENTPATH changes when a rom was loaded
 		elif CURRENTPATH != old_CURRENTPATH:
 			logging.info(f"Change in CURRENTPATH detected : {CURRENTPATH}")
+			old_CURRENTPATH = CURRENTPATH
 			loaded_file = CURRENTPATH
+		# We sometimes receive a event without anything changing, we should ignore it.
 		else:
 			logging.debug("Change not detected, ignoring event.")
 			continue
 
-		old_CURRENTPATH = CURRENTPATH
-		old_STARTPATH = STARTPATH
-
+		# Debugging to see what was the content of the files
 		logging.debug(f"/tmp/FULLPATH    : {FULLPATH}")
 		logging.debug(f"/tmp/CURRENTPATH : {CURRENTPATH}")
 		logging.debug(f"/tmp/STARTPATH   : {STARTPATH}")
 		logging.debug(f"/tmp/CORENAME    : {CORENAME}")
 
+		# If the selected option is not actually a file, try to match it to one
 		if not os.path.isfile(loaded_file):
 			matching_file = find_matching_file(loaded_file, FULLPATH)
+
+			# If we could not match it to a file, stop doing anyting
 			if matching_file is None :
 				logging.warning(f"Failed to find a file matching {loaded_file}")
 				continue;
 			loaded_file = matching_file
 
+		# Debuging to see what file we detected
 		logging.debug(f"Loaded file is {loaded_file}")
 
+		# If the loaded file is actually a MGL we need to see what was actually loaded
+		# by looking within the file.
 		if loaded_file.endswith('.mgl'):
 			logging.info("A MLG was loaded, tyring to parse it.")
 			try:
 				mgl_parser = MGLParser(loaded_file)
+			# If we cannot open MGL, there is nothing else to do
 			except Exception as error:
 				logging.warning(f"Cannot load MLG : {error}")
 				continue
 
+			# Tyring ro read the core loeaded trough the MGL 
 			try:
 				core = mgl_parser.get_core()
+			# A MGL without a core (rbf) is impossible afaik, so we're out
 			except Exception as error:
-				logging.warning(f"Cannot extract core from MLG : {error}")
+				logging.warning(f"Cannot extract core from MGL : {error}")
 				continue
 
+			# Trying to read the rom loaded trought the MGL
 			try:
 				rom = mgl_parser.get_rom()
+			# Is possible to not read a rom if the MGL is loading only the rbf
 			except Exception as warning:
-				logging.warning(f"Canot extract rom from MLG : {warning}")
+				logging.info(f"Canot extract rom from MGL : {warning}")
 				rom = None
 
+			# Do some debugging to figure out what we got
 			logging.debug(f"CORE: {core}")
 			logging.debug(f"ROM : {rom}")
 			
+			# If a rom was loaded, create a entry for it
 			if rom is not None:
 				rom = find_matching_file(rom)
 				core = os.path.basename(core) 
 				update_loaded_with(f"{core}|{rom}")
-
+			# If a rom was not loaded, we probably need to load the core
 			else:
 				core = find_matching_file(core)
 				update_loaded_with(f"RBF|{core}")
 		
+		# If the file loaded was not a MLG (Shortcut) but a RBF (Core)
 		elif loaded_file.endswith('.rbf'):
 			update_loaded_with(f"RBF|{loaded_file}")
 
+		# If the file loaded ir a MRA (Arcade Shortcut)
 		elif loaded_file.endswith('.mra'):
 			update_loaded_with(f"MRA|{loaded_file}")
 
+		# If is not a MRA, RBF or MGL than it must be a ROM
 		else:
 			update_loaded_with(f"{CORENAME}|{loaded_file}")
 
