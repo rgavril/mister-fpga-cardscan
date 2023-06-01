@@ -12,8 +12,9 @@ CONFIG_FILE = "/media/fat/cardscan.ini"
 LOADED_FILE = "/tmp/LOADED"
 DEFAULT_SERIAL_PORT = "/dev/ttyUSB0"
 DEFAULT_SERIAL_SPEED = "9600"
-#logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S', filename="/var/log/cardscan.log")
-logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
+
+logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S', filename="/var/log/cardscan.log")
+#logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
 
 def read_config():
 	config = configparser.ConfigParser()
@@ -176,10 +177,7 @@ def serial_main_loop():
 		cardID = line.strip("[]\n");
 		logging.info(f'Card reader detected the card with #{cardID}.')
 
-		# Re-read the config file
-		config = read_config()
-
-		## Save if master card was used, set write mode on
+		## If master card was used, set write mode on
 		if cardID == "3696165944":
 			logging.info(f'Master card was used, write mode is ON')
 			write_mode_on = True
@@ -191,11 +189,14 @@ def serial_main_loop():
 			save_game(cardID)
 			continue;
 
-
+		# Re-read the config file
+		config = read_config()
+		
 		# If the card was not game associated, write a empty value
 		if not config.has_option('CARDS', cardID) :
 			config.set('CARDS', cardID, "")
 			save_config(config)
+
 
 		# Read the game associated with the card
 		cardGame = config.get('CARDS', cardID).strip('"')

@@ -11,10 +11,11 @@ import xml.etree.ElementTree as ET
 import subprocess
 import logging
 import time
+import getopt
 
 OUTPUT_FILE="/tmp/LOADED"
-# logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S', filename="/var/log/gamewatch.log")
-logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
+logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S', filename="/var/log/gamewatch.log")
+#logging.basicConfig(format='%(asctime)s %(levelname)s : %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
 
 
 def get_rbf_from_mgl(mgl_filename):
@@ -213,7 +214,7 @@ def find_matching_file(loaded_file, prefix=""):
 
 
 
-def main():
+def main_loop():
 	logging.info("Game watch process started")
 
 	while True:
@@ -269,6 +270,34 @@ def main():
 		else:
 			core = read_file_contents("/tmp/CORENAME")
 			update_loaded_with(f"{core}|{loaded_file}")
+
+def display_help():
+	print(f"Usage : {sys.argv[0]} [OPTIONS]")
+	print(f"Monitors and writes current running game/core in {OUTPUT_FILE}.")
+	print("")
+	print("-h, --help   display this help and exit")
+	print("-d, --daemon run the application in daemon mode")
+
+def daemonize():
+	fpid = os.fork()
+	if fpid!=0:
+		sys.exit(0)
+
+def main() :
+	argumentList = sys.argv[1:]
+	try:
+		arguments, values = getopt.getopt(argumentList, 'hdo:', ["help", "daemon", "output"])
+		for currentArgument, currentValue in arguments:
+			if currentArgument in ("-h", "--help"):
+				display_help()
+				sys.exit(0)
+			elif currentArgument in ("-d", "--daemon"):
+				print("Starting in daemon mode.")
+				daemonize()
+	except getopt.GetoptError as err:
+		print (str(err))
+
+	main_loop()
 
 if __name__ == "__main__":
     main()
